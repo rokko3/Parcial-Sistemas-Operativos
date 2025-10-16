@@ -22,90 +22,86 @@ except Exception as e:
 	raise
 
 
-# helper functions for shared weather data (no classes)
-def create_shared(maxlen=300):
-	"""Create a shared data structure with a lock and a history deque."""
+
+def crear_compartido(maxlen=300):
 	return {
 		'lock': threading.Lock(),
 		'history': deque(maxlen=maxlen),
 	}
 
 
-def add_sample(shared, sample):
-	with shared['lock']:
-		shared['history'].append(sample)
+def agregar_muestra(compartido, muestra):
+	with compartido['lock']:
+		compartido['history'].append(muestra)
 
 
-def latest(shared):
-	with shared['lock']:
-		if shared['history']:
-			return shared['history'][-1]
+def ultima(compartido):
+	with compartido['lock']:
+		if compartido['history']:
+			return compartido['history'][-1]
 		return None
 
 
-def get_history(shared):
-	with shared['lock']:
-		return list(shared['history'])
+def obtener_historial(compartido):
+	with compartido['lock']:
+		return list(compartido['history'])
 
 
-def generator_thread(shared, stop_event: threading.Event):
+def hilo_generador(compartido, evento_parada: threading.Event):
 	"""Genera muestras cada segundo con pequeñas variaciones."""
 	# Valores base realistas
-	temp = random.uniform(15.0, 25.0)  # Celsius
-	hum = random.uniform(40.0, 60.0)   # %
-	pres = random.uniform(1000.0, 1025.0)  # hPa
+	temperatura = random.uniform(15.0, 25.0)  # Celsius
+	humedad = random.uniform(40.0, 60.0)   # %
+	presion = random.uniform(1000.0, 1025.0)  # hPa
 
-	while not stop_event.is_set():
+	while not evento_parada.is_set():
 		# small random walk
-		temp += random.uniform(-0.5, 0.5)
-		hum += random.uniform(-1.0, 1.0)
-		pres += random.uniform(-0.8, 0.8)
+		temperatura += random.uniform(-0.5, 0.5)
+		humedad += random.uniform(-1.0, 1.0)
+		presion += random.uniform(-0.8, 0.8)
 
-		temp = max(-50.0, min(60.0, temp))
-		hum = max(0.0, min(100.0, hum))
-		pres = max(300.0, min(1100.0, pres))
+		temperatura = max(-50.0, min(60.0, temperatura))
+		humedad = max(0.0, min(100.0, humedad))
+		presion = max(300.0, min(1100.0, presion))
 
-		now = datetime.now()
-		sample = (now, round(temp, 2), round(hum, 2), round(pres, 2))
-		add_sample(shared, sample)
+		ahora = datetime.now()
+		muestra = (ahora, round(temperatura, 2), round(humedad, 2), round(presion, 2))
+		agregar_muestra(compartido, muestra)
 
 		time.sleep(1)
 
 
-def logger_thread(shared, csv_path: str, stop_event: threading.Event):
-	dirname = os.path.dirname(csv_path)
+def hilo_registrador(compartido, ruta_csv: str, evento_parada: threading.Event):
+	dirname = os.path.dirname(ruta_csv)
 	if dirname and not os.path.exists(dirname):
         
 		os.makedirs(dirname, exist_ok=True)
 
-	# abrir en modo append
-	header = ["datetime", "temperature_C", "humidity_percent", "pressure_hPa"]
+	header = ["datetime", "temperatura_C", "humedad_percent", "presion_hPa"]
 
-	# write header if file doesn't exist
-	write_header = not os.path.exists(csv_path)
+	escribir_cabecera = not os.path.exists(ruta_csv)
 
 	# First immediate write if we have a sample
-	first = latest(shared)
-	if first is not None:
-		with open(csv_path, "a", newline="") as f:
+	primera = ultima(compartido)
+	if primera is not None:
+		with open(ruta_csv, "a", newline="") as f:
 			writer = csv.writer(f)
-			if write_header:
+			if escribir_cabecera:
 				writer.writerow(header)
-				write_header = False
-			ts, t, h, p = first
-			writer.writerow([ts.isoformat(sep=" "), t, h, p])
-
-	while not stop_event.wait(5):
-		sample = latest(shared)
-		if sample is None:
+				escribir_cabecera = False
+			ts, temperatura, humedad, presion = primera
+			writer.writerow([ts.isoformat(sep=" "), temperatura, humedad, presion])
+	while not evento_parada.wait(5):
+		muestra = ultima(compartido)
+		if muestra is None:
 			continue
-		with open(csv_path, "a", newline="") as f:
+		with open(ruta_csv, "a", newline="") as f:
 			writer = csv.writer(f)
-			if write_header:
+			if escribir_cabecera:
 				writer.writerow(header)
-				write_header = False
-			ts, t, h, p = sample
-			writer.writerow([ts.isoformat(sep=" "), t, h, p])
+				escribir_cabecera = False
+			ts, temperatura, humedad, presion = muestra
+			writer.writerow([ts.isoformat(sep=" "), temperatura, humedad, presion])
 
 
 def describe_trend(history):
@@ -135,8 +131,8 @@ def describe_trend(history):
 	return desc
 
 
-def run_gui(shared, stop_event):
-	"""Function-based GUI replacing WeatherGUI class."""
+def ejecutar_gui(compartido, evento_parada):
+	"""Interfaz gráfica (funcional) usando Tkinter."""
 	root = tk.Tk()
 	root.title("Estación Meteorológica - Simulación")
 
@@ -152,29 +148,30 @@ def run_gui(shared, stop_event):
 
 	# bind close
 	def on_close():
-		stop_event.set()
+		evento_parada.set()
 		root.after(200, root.destroy)
 
 	root.protocol("WM_DELETE_WINDOW", on_close)
+
 
 	colors = {'temp': 'red', 'hum': 'blue', 'pres': 'green'}
 	yranges = {'temp': (-20, 50), 'hum': (0, 100), 'pres': (900, 1050)}
 
 	def draw():
-		history = get_history(shared)
+		historial = obtener_historial(compartido)
 		canvas.delete("all")
-		if not history:
-			canvas.create_text(width/2, height/2, text="Esperando datos...", fill="gray")
+		if not historial:
+			canvas.create_text(width/2, height/2, text="Esperando datos", fill="gray")
 			return
 
 		for i in range(1, 10):
 			y = i * height / 10
 			canvas.create_line(0, y, width, y, fill="#f0f0f0")
 
-		times = [t for (t, _, _, _) in history]
-		temps = [v for (_, v, _, _) in history]
-		hums = [v for (_, _, v, _) in history]
-		press = [v for (_, _, _, v) in history]
+		times = [t for (t, _, _, _) in historial]
+		temps = [v for (_, v, _, _) in historial]
+		hums = [v for (_, _, v, _) in historial]
+		press = [v for (_, _, _, v) in historial]
 
 		def plot(series, yrange, color):
 			if not series:
@@ -222,10 +219,10 @@ def run_gui(shared, stop_event):
 
 	def update_loop():
 		draw()
-		hist = get_history(shared)
+		hist = obtener_historial(compartido)
 		desc = describe_trend(hist)
 		desc_var.set(desc)
-		if not stop_event.is_set():
+		if not evento_parada.is_set():
 			root.after(1000, update_loop)
 
 	update_loop()
@@ -233,22 +230,22 @@ def run_gui(shared, stop_event):
 
 
 def main():
-	shared = create_shared(maxlen=180)
-	stop_event = threading.Event()
+	compartido = crear_compartido(maxlen=180)
+	evento_parada = threading.Event()
 
 	here = os.path.dirname(os.path.abspath(__file__))
-	csv_path = os.path.join(here, "weather_log.csv")
+	ruta_csv = os.path.join(here, "weather_log.csv")
 
-	gen = threading.Thread(target=generator_thread, args=(shared, stop_event), daemon=True)
-	log = threading.Thread(target=logger_thread, args=(shared, csv_path, stop_event), daemon=True)
+	hilo_gen = threading.Thread(target=hilo_generador, args=(compartido, evento_parada), daemon=True)
+	hilo_log = threading.Thread(target=hilo_registrador, args=(compartido, ruta_csv, evento_parada), daemon=True)
 
-	gen.start()
-	log.start()
+	hilo_gen.start()
+	hilo_log.start()
 
 	try:
-		run_gui(shared, stop_event)
+		ejecutar_gui(compartido, evento_parada)
 	except KeyboardInterrupt:
-		stop_event.set()
+		evento_parada.set()
 
 
 if __name__ == "__main__":
