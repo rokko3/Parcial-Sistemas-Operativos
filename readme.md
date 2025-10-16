@@ -1,0 +1,1 @@
+Parcial de sistemas operativos
