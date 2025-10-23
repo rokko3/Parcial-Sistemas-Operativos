@@ -1,13 +1,12 @@
-"""Simulación de una estación meteorológica usando hilos.
-
-Hilo 1 - Generador: genera temperatura, humedad y presión cada segundo.
-Hilo 2 - Logger: escribe los datos en CSV cada 5 segundos (primer registro inmediato).
-Hilo 3 - GUI: muestra una gráfica simple y una descripción en una ventana Tkinter.
-
-Ejecución: python3 semaforos.py
 """
 
-import threading
+Hilo 1 - Generador: genera temperatura, humedad y presión cada segundo.
+Hilo 2 - Escribe los datos en CSV cada 5 segundos (primer registro inmediato).
+Hilo 3 - Muestra una gráfica simple y una descripción en una ventana Tkinter.
+
+"""
+
+import threading   
 import time
 import random
 import csv
@@ -15,47 +14,44 @@ import os
 from collections import deque
 from datetime import datetime
 
-try:
-	import tkinter as tk
-except Exception as e:
-	print("Tkinter no está disponible en este entorno:", e)
-	raise
+import tkinter as tk
+
 
 
 
 def crear_compartido(maxlen=300):
 	return {
-		'lock': threading.Lock(),
-		'history': deque(maxlen=maxlen),
+		'lock': threading.Lock(), # Crea un controlador de acceso	
+		'history': deque(maxlen=maxlen), # Almacena los datos de las muestras
 	}
 
 
-def agregar_muestra(compartido, muestra):
-	with compartido['lock']:
-		compartido['history'].append(muestra)
+def agregar_muestra(compartido, muestra): 
+	with compartido['lock']: # Abre la seccion 
+		compartido['history'].append(muestra) # Agrega la muestra al historial
+ 
 
-
-def ultima(compartido):
+def ultima(compartido): 
 	with compartido['lock']:
-		if compartido['history']:
-			return compartido['history'][-1]
+		if compartido['history']: 
+			return compartido['history'][-1] # Devuelve la ultima muestra si hay
 		return None
 
 
 def obtener_historial(compartido):
 	with compartido['lock']:
-		return list(compartido['history'])
+		return list(compartido['history']) # Devuelve una copia del historial
 
 
 def hilo_generador(compartido, evento_parada: threading.Event):
 	"""Genera muestras cada segundo con pequeñas variaciones."""
 	# Valores base realistas
-	temperatura = random.uniform(15.0, 25.0)  # Celsius
+	temperatura = random.uniform(15.0, 25.0)  # Celsius 
 	humedad = random.uniform(40.0, 60.0)   # %
 	presion = random.uniform(1000.0, 1025.0)  # hPa
 
-	while not evento_parada.is_set():
-		# small random walk
+	while not evento_parada.is_set(): # Bucle hasta que se indique parada
+		# Variaciones pequeñas aleatorias
 		temperatura += random.uniform(-0.5, 0.5)
 		humedad += random.uniform(-1.0, 1.0)
 		presion += random.uniform(-0.8, 0.8)
@@ -64,44 +60,44 @@ def hilo_generador(compartido, evento_parada: threading.Event):
 		humedad = max(0.0, min(100.0, humedad))
 		presion = max(300.0, min(1100.0, presion))
 
-		ahora = datetime.now()
+		ahora = datetime.now() # Timestamp actual
 		muestra = (ahora, round(temperatura, 2), round(humedad, 2), round(presion, 2))
-		agregar_muestra(compartido, muestra)
+		agregar_muestra(compartido, muestra) # Agrega la muestra al compartido
 
 		time.sleep(1)
 
 
 def hilo_registrador(compartido, ruta_csv: str, evento_parada: threading.Event):
-	dirname = os.path.dirname(ruta_csv)
-	if dirname and not os.path.exists(dirname):
+	dirname = os.path.dirname(ruta_csv) # Ruta del csv
+	if dirname and not os.path.exists(dirname):# Crea el directorio si no existe
         
-		os.makedirs(dirname, exist_ok=True)
+		os.makedirs(dirname, exist_ok=True) # Crea el directorio
 
-	header = ["datetime", "temperatura_C", "humedad_percent", "presion_hPa"]
+	header = ["datetime", "temperatura_C", "humedad_percent", "presion_hPa"] # Cabecera CSV
 
-	escribir_cabecera = not os.path.exists(ruta_csv)
-
-	# First immediate write if we have a sample
+	escribir_cabecera = not os.path.exists(ruta_csv) # Si el archivo no existe, escribir cabecera
+	# Escribe la primera muestra inmediatamente si existe
 	primera = ultima(compartido)
-	if primera is not None:
-		with open(ruta_csv, "a", newline="") as f:
-			writer = csv.writer(f)
-			if escribir_cabecera:
-				writer.writerow(header)
-				escribir_cabecera = False
-			ts, temperatura, humedad, presion = primera
-			writer.writerow([ts.isoformat(sep=" "), temperatura, humedad, presion])
-	while not evento_parada.wait(5):
+	if primera is not None: # Si hay una muestra
+		with open(ruta_csv, "a", newline="") as f: # Abre el archivo en modo append
+			writer = csv.writer(f) # Crea el escritor CSV
+			if escribir_cabecera: # Si es necesario, escribe la cabecera
+				writer.writerow(header) # Escribe la cabecera
+				escribir_cabecera = False # Marca que ya se escribió
+			ts, temperatura, humedad, presion = primera # Desempaqueta la muestra
+			writer.writerow([ts.isoformat(sep=" "), temperatura, humedad, presion]) # Escribe la muestra
+	while not evento_parada.wait(5): # Espera 5 segundos o hasta que se indique parada
+		# Escribe la última muestra
 		muestra = ultima(compartido)
-		if muestra is None:
+		if muestra is None: # Si no hay muestra, continuar
 			continue
-		with open(ruta_csv, "a", newline="") as f:
-			writer = csv.writer(f)
-			if escribir_cabecera:
-				writer.writerow(header)
-				escribir_cabecera = False
-			ts, temperatura, humedad, presion = muestra
-			writer.writerow([ts.isoformat(sep=" "), temperatura, humedad, presion])
+		with open(ruta_csv, "a", newline="") as f: # Abre el archivo en modo append
+			writer = csv.writer(f) # Crea el escritor CSV
+			if escribir_cabecera: # Si es necesario, escribe la cabecera
+				writer.writerow(header) # Escribe la cabecera
+				escribir_cabecera = False # Marca que ya se escribió
+			ts, temperatura, humedad, presion = muestra # Desempaqueta la muestra
+			writer.writerow([ts.isoformat(sep=" "), temperatura, humedad, presion]) # Escribe la muestra
 
 
 def describe_trend(history):
@@ -132,12 +128,13 @@ def describe_trend(history):
 
 
 def ejecutar_gui(compartido, evento_parada):
-	"""Interfaz gráfica (funcional) usando Tkinter."""
+	"""Interfaz grafica """
+ 
 	root = tk.Tk()
-	root.title("Estación Meteorológica - Simulación")
+	root.title("Estación Meteorologica - Simulacion")
 
-	width = 800
-	height = 400
+	width = 1200
+	height = 1500
 
 	canvas = tk.Canvas(root, width=width, height=height, bg="white")
 	canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -215,7 +212,7 @@ def ejecutar_gui(compartido, evento_parada):
 		canvas.create_rectangle(8, 8, 220, 50, fill="#ffffff", outline="#ddd")
 		canvas.create_text(20, 18, text="Temperatura (°C)", fill=colors['temp'], anchor="w")
 		canvas.create_text(20, 32, text="Humedad (%)", fill=colors['hum'], anchor="w")
-		canvas.create_text(140, 18, text="Presión (hPa)", fill=colors['pres'], anchor="w")
+		canvas.create_text(140, 18, text="Presion (hPa)", fill=colors['pres'], anchor="w")
 
 	def update_loop():
 		draw()
