@@ -45,7 +45,7 @@ def obtener_historial(compartido):
 
 def hilo_generador(compartido, evento_parada: threading.Event):
 	"""Genera muestras cada segundo con pequeñas variaciones."""
-	# Valores base realistas
+	# Valores base (primeros) randomizados
 	temperatura = random.uniform(15.0, 25.0)  # Celsius 
 	humedad = random.uniform(40.0, 60.0)   # %
 	presion = random.uniform(1000.0, 1025.0)  # hPa
@@ -133,8 +133,8 @@ def ejecutar_gui(compartido, evento_parada):
 	root = tk.Tk()
 	root.title("Estación Meteorologica - Simulacion")
 
-	width = 1200
-	height = 1500
+	width = 800
+	height = 400
 
 	canvas = tk.Canvas(root, width=width, height=height, bg="white")
 	canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
